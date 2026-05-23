@@ -102,12 +102,13 @@ def math_equal(
                 except Exception:
                     continue
             return False
-        if is_numeric:
-            return False
     except:
         pass
 
     if not prediction and prediction not in [0, False]:
+        return False
+    
+    if is_numeric:
         return False
 
     # 2. symbolic equal
