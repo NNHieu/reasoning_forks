@@ -16,14 +16,15 @@ from pass_k_utils import estimate_pass_at_k
 executor = SandboxExecutor()
 def execute_and_extract_answer(response: str, data_name: str) -> str:
     """Executes LLM code if present, otherwise extracts standard text answer."""
-    if "<llm-code>" in response:
+    # Fix: Ensure response is string before "in" checks to avoid errors if float passed
+    if "<llm-code>" in str(response):
         code_output = run_llm_code(response, executor)
         result = ''
         if code_output and len(code_output) > 0:
             result = code_output[-1].get('result', '')
         return result
     else:
-        return extract_answer(response, data_name=data_name)
+        return extract_answer(str(response), data_name=data_name)
 
 def load_samples(sample_dir: Path, split: str) -> pd.DataFrame:
     """Loads and concatenates all generation CSVs into a single DataFrame."""
@@ -34,16 +35,17 @@ def load_samples(sample_dir: Path, split: str) -> pd.DataFrame:
     all_generation_df = [pd.read_csv(p) for p in all_generation_csv]
     return pd.concat(all_generation_df, ignore_index=True)
 
-def process_df(df: pd.DataFrame, data_name: str) -> pd.DataFrame:
+def process_df(df: pd.DataFrame, data_name: str, is_numeric = False) -> pd.DataFrame:
     """Applies extraction, length counting, and correctness grading in parallel."""
-    df['response'] = df['response'].astype(str)    
-    df['response_len'] = df['response'].apply(lambda x: len(x.split()))
+    # Fix: Ensure responses are string before split()
+    df['response'] = df['response'].astype(str)
+    df['response_len'] = df['response'].apply(lambda x: len(str(x).split()))
     df['pred_answer'] = df['response'].parallel_apply(lambda x: execute_and_extract_answer(x, data_name=data_name))
     df['gt_answer'] = df['gt_answer'].apply(strip_string)
-    df['is_valid'] = df['pred_answer'].apply(lambda x: len(x) > 0)
+    df['is_valid'] = df['pred_answer'].apply(lambda x: len(str(x)) > 0)
     # Grade answers
     df['is_correct'] = df.parallel_apply(
-        lambda row: math_equal(row['pred_answer'], row['gt_answer'], timeout=False), axis=1
+        lambda row: math_equal(row['pred_answer'], row['gt_answer'], timeout=False, is_numeric=is_numeric), axis=1
     )
     return df
 
@@ -109,6 +111,13 @@ def main():
         default=32, 
         help="Number of parallel workers for pandarallel (default: 32)."
     )
+
+    parser.add_argument(
+        "--is_numeric",
+        action="store_true",
+        default=False,
+        help="Set this flag if responses should be interpreted as numeric only (default: False)."
+    )
     
     args = parser.parse_args()
 
@@ -122,7 +131,7 @@ def main():
         try:
             # 1. Load & Process Data
             generation_df = load_samples(config_dir, args.split)
-            generation_df = process_df(generation_df, data_name=args.dataset)
+            generation_df = process_df(generation_df, data_name=args.dataset, is_numeric=args.is_numeric)
             
             # 2. Save Processed Data
             processed_csv_path = config_dir / f"{args.split}.processed_generation.csv"

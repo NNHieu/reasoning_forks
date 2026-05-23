@@ -64,6 +64,7 @@ def math_equal(
     include_percentage: bool = True,
     is_close: bool = True,
     timeout: bool = False,
+    is_numeric: bool = False,
 ) -> bool:
     """
     Exact match of math if and only if:
@@ -100,6 +101,8 @@ def math_equal(
                             return True
                 except Exception:
                     continue
+            return False
+        if is_numeric:
             return False
     except:
         pass
