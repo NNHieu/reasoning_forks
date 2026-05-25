@@ -3,7 +3,8 @@
 DATASET_NAME=$1
 model_short_name=$2
 NUM_TRAIN_EPOCHS=$3
-shift 3
+BATCH_SIZE_ARG=$4
+shift 4
 
 DATA_ROOT="/scratch1/hnn5071/workspace/rm-limeval/datasets"
 
@@ -31,7 +32,14 @@ if [ -z "$CONFIG" ]; then
 fi
 
 # Parse model config
-read -r MODEL_NAME BATCH_SIZE GRAD_ACCUM LR <<< "$CONFIG"
+read -r MODEL_NAME DEFAULT_BATCH_SIZE GRAD_ACCUM LR <<< "$CONFIG"
+
+# Use batch size from argument if provided, else default
+if [ -z "$BATCH_SIZE_ARG" ]; then
+    BATCH_SIZE="$DEFAULT_BATCH_SIZE"
+else
+    BATCH_SIZE="$BATCH_SIZE_ARG"
+fi
 
 TOTAL_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM))
 
@@ -41,8 +49,10 @@ TOTAL_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM))
 declare -A DATA_PATHS
 declare -A DATA_SIZES   # for dynamic SAVE_STEPS
 
-DATA_PATHS["arithchain_2_10_forward"]="datasets/arithchain_2_10/train_sft_forward.parquet"
-DATA_PATHS["arithchain_2_10_reverse"]="datasets/arithchain_2_10/train_sft_reverse.parquet"
+DATA_PATHS["arithchain_2_10_forward"]="datasets/arithchain_2_10/sft_train_forward.parquet"
+DATA_PATHS["arithchain_2_10_reverse"]="datasets/arithchain_2_10/sft_train_reverse.parquet"
+DATA_PATHS["arithchain_2_10_forward_with_reverse_rationale"]="datasets/arithchain_2_10/sft_train_forward_with_reverse_rationale.parquet"
+
 DATA_PATHS["gsm8k_datasetlevel"]="nnheui/reasoning_modes|gsm8k_train_double_datasetlevel"
 DATA_PATHS["gsm8k_problemlevel"]="nnheui/reasoning_modes|gsm8k_train_double_problemlevel"
 
