@@ -1,10 +1,28 @@
 #!/usr/bin/env bash
 
-DATASET_NAME=$1
-model_short_name=$2
-NUM_TRAIN_EPOCHS=$3
-BATCH_SIZE_ARG=$4
-shift 4
+# This script must be called as:
+#   bash run_sft.sh <DATASET_NAME> <MODEL_SHORT_NAME> <NUM_TRAIN_EPOCHS> [BATCH_SIZE] [EXTRA_ARGS...]
+#
+# Example:
+#   bash run_sft.sh gsm8k_datasetlevel olmo-3-7b 8 32 --extra-flag=foo
+
+if [[ $# -lt 3 ]]; then
+    echo "Usage: $0 <DATASET_NAME> <MODEL_SHORT_NAME> <NUM_TRAIN_EPOCHS> [BATCH_SIZE] [EXTRA_ARGS...]"
+    exit 1
+fi
+
+DATASET_NAME="$1"
+model_short_name="$2"
+NUM_TRAIN_EPOCHS="$3"
+BATCH_SIZE_ARG="$4"
+
+if [[ $# -ge 4 ]]; then
+    shift 4
+    EXTRA_ARGS=("$@")
+else
+    shift 3
+    EXTRA_ARGS=()
+fi
 
 DATA_ROOT="/scratch1/hnn5071/workspace/rm-limeval/datasets"
 
@@ -13,9 +31,11 @@ DATA_ROOT="/scratch1/hnn5071/workspace/rm-limeval/datasets"
 ########################
 declare -A MODEL_CONFIGS
 
-MODEL_CONFIGS["qwen2.5_0.5b"]="unsloth/Qwen2.5-0.5B 32 1 1e-5"
-MODEL_CONFIGS["evolm-1b"]="zhenting/evolm-1B-160BT-cpt-MixedFW8FM42 32 1 1e-5"
-MODEL_CONFIGS["evolm-4b"]="zhenting/evolm-4B-160BT-cpt-MixedFW8FM42 32 1 1e-5"
+MODEL_CONFIGS["qwen2.5_0.5b"]="unsloth/Qwen2.5-0.5B 32 1 5e-6"
+MODEL_CONFIGS["evolm-1b"]="zhenting/evolm-1B-160BT-cpt-MixedFW8FM42 32 1 3e-5"
+MODEL_CONFIGS["evolm-4b"]="zhenting/evolm-4B-160BT-cpt-MixedFW8FM42 32 1 5e-6"
+MODEL_CONFIGS["olmo-3-7b"]="allenai/Olmo-3-1025-7B 32 1 1e-5"
+
 
 # Validate model
 if [ -z "${model_short_name}" ]; then
@@ -53,11 +73,12 @@ DATA_PATHS["arithchain_2_10_forward"]="datasets/arithchain_2_10/sft_train_forwar
 DATA_PATHS["arithchain_2_10_reverse"]="datasets/arithchain_2_10/sft_train_reverse.parquet"
 DATA_PATHS["arithchain_2_10_forward_with_reverse_rationale"]="datasets/arithchain_2_10/sft_train_forward_with_reverse_rationale.parquet"
 
-DATA_PATHS["gsm8k_datasetlevel"]="nnheui/reasoning_modes|gsm8k_train_double_datasetlevel"
-DATA_PATHS["gsm8k_problemlevel"]="nnheui/reasoning_modes|gsm8k_train_double_problemlevel"
+DATA_PATHS["gsm8k_datasetlevel"]="nnheui/reasoning_modes,gsm8k_train_double_datasetlevel"
+DATA_PATHS["gsm8k_problemlevel"]="nnheui/reasoning_modes,gsm8k_train_double_problemlevel"
 
 DATA_SIZES["arithchain_2_10_forward"]=6400
 DATA_SIZES["arithchain_2_10_reverse"]=6400
+DATA_SIZES["arithchain_2_10_forward_with_reverse_rationale"]=6400
 DATA_SIZES["gsm8k_datasetlevel"]=12800
 DATA_SIZES["gsm8k_problemlevel"]=12800
 
@@ -82,19 +103,6 @@ fi
 
 # Default: compute from dataset size
 SAVE_STEPS=$((DATA_SIZE / TOTAL_BATCH_SIZE))
-
-# Override for fixed cases (to match your original logic exactly)
-case "${DATASET_NAME}" in
-  "mathgsm8k_nlreasoning" | "mathgsm8k_code")
-    SAVE_STEPS=186
-    ;;
-  "gsm8k_nlreasoning" | "gsm8k_code" | "gsm8k_datasetlevelcombined")
-    SAVE_STEPS=101
-    ;;
-  "gsm8k_single_mix")
-    # already computed dynamically (6400 / TOTAL_BATCH_SIZE)
-    ;;
-esac
 
 ########################
 # DEBUG PRINT
@@ -121,7 +129,7 @@ OUTPUT_DIR="runs/${WANDB_PROJECT}/${RUN_NAME}"
 
 export TOKENIZERS_PARALLELISM=false
 
-mkdir -p ${OUTPUT_DIR}
+mkdir -p "${OUTPUT_DIR}"
 
 LOG_FILE="${OUTPUT_DIR}/train.log"
 
@@ -134,21 +142,22 @@ echo "Logs: ${LOG_FILE}"
 # --------------------------------------------------
 
 python src/training/sft.py \
-  --model_name ${MODEL_NAME} \
-  --data_path ${DATA_PATH} \
+  --model_name "${MODEL_NAME}" \
+  --data_path "${DATA_PATH}" \
   --prompt_key "question" \
   --response_key "solution" \
   --chat_template_path src/alpaca_template.jira \
-  --batch_size ${BATCH_SIZE} \
-  --grad_accum ${GRAD_ACCUM} \
+  --batch_size "${BATCH_SIZE}" \
+  --grad_accum "${GRAD_ACCUM}" \
   --warmup_ratio 0.1 \
-  --num_train_epochs ${NUM_TRAIN_EPOCHS} \
-  --learning_rate ${LR} \
-  --save_steps ${SAVE_STEPS} \
-  --output_dir ${OUTPUT_DIR} \
+  --num_train_epochs "${NUM_TRAIN_EPOCHS}" \
+  --learning_rate "${LR}" \
+  --save_steps "${SAVE_STEPS}" \
+  --output_dir "${OUTPUT_DIR}" \
   --use_wandb \
-  --wandb_project ${WANDB_PROJECT} \
-  --wandb_run_name ${RUN_NAME} $@ \
-  2>&1 | tee ${LOG_FILE}
+  --wandb_project "${WANDB_PROJECT}" \
+  --wandb_run_name "${RUN_NAME}" \
+  "${EXTRA_ARGS[@]}" \
+  2>&1 | tee "${LOG_FILE}"
 
 echo "Training finished."

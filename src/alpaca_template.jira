@@ -12,6 +12,5 @@ Solve the following math problem, and put your final answer within \\boxed{}.
 
 ### Response:
 {% elif message['role'] == 'assistant' %}
-{{ message['content'] }}
-{% endif %}
+{{ message['content'] }}{{eos_token}}{% endif %}
 {% endfor %}

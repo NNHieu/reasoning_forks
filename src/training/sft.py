@@ -84,7 +84,7 @@ def load_model_and_tokenizer(args):
         dtype=torch.bfloat16,
         device_map=device_map,
         use_gradient_checkpointing="unsloth",
-        float32_mixed_precision = True,
+        # float32_mixed_precision = True,
     )
 
     # tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
@@ -96,7 +96,17 @@ def load_model_and_tokenizer(args):
 # Dataset Preparation
 # -------------------------------------------------
 def load_and_prepare_dataset(tokenizer, args):
-    dataset = load_dataset("parquet", data_files=args.data_path)["train"]
+    # Check for special HuggingFace loading format: "repo,split"
+    if "," in args.data_path:
+        repo, split = args.data_path.split(",", 1)
+        dataset = load_dataset(repo, split=split)
+        print(f"Loaded HuggingFace dataset: repo={repo}, split={split}")
+        # Use as-is; HF datasets returns DatasetDict if has multiple splits, else Dataset
+        if isinstance(dataset, dict) and split in dataset:
+            dataset = dataset[split]
+    else:
+        dataset = load_dataset("parquet", data_files=args.data_path)["train"]
+        print("Loaded parquet dataset from:", args.data_path)
     print("dataset size: ", len(dataset))
     print(dataset[0])
 
